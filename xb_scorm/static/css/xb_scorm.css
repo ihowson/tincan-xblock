@@ -1,0 +1,9 @@
+/* CSS for XblockSCORM */
+
+.xb_scorm_block .count {
+    font-weight: bold;
+}
+
+.xb_scorm_block p {
+    cursor: pointer;
+}
