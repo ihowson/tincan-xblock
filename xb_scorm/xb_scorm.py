@@ -127,7 +127,7 @@ class XblockSCORM(XBlock):
     #    scope=Scope.user_state,
     #    help="Temporary storage for SCORM data",
     #)     
-    scorm_data = LoggingDict(
+    scorm_data = Dict(
         scope=Scope.user_state,
         help="Temporary storage for SCORM data",
     )      
@@ -183,16 +183,15 @@ class XblockSCORM(XBlock):
         """
         Store data reported by the SCORM object
         """
-        stamp = time.time()
-        print "\n[%s]: scorm_set_value for %s" % (stamp,xblock) 
-        data = str(data)
-        print "[%s]:     GIVEN: %s" % (stamp,type(data)) 
-        self.scorm_data = "DATA = %s\nSTAMP=%s" % (self.scorm_data, stamp)
-        scorm_str = self.scorm_data
-        print "[%s]:     AFTER UPDATE:  %s" % (stamp,scorm_str) 
-        scorm_data["%s AFTER UPDATE %s" % (stamp,data)] =  scorm_str
-        return scorm_data
-        
+        print "\n[%s]: scorm_set_value for %s" % (stamp,xblock)
+        in_data = str(data)
+        print "[%s]:     GIVEN: %s" % (stamp,in_data)
+        for k, v in data.iteritems():
+            self.scorm_data[k] = v
+        scorm_str = str(self.scorm_data)
+        print "[%s]:     AFTER UPDATE:  %s" % (stamp,scorm_str)
+        return self.scorm_data
+
 
     @XBlock.json_handler
     def scorm_get_value(self, data, suffix=''):
