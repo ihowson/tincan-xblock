@@ -127,7 +127,7 @@ class XblockSCORM(XBlock):
     #    scope=Scope.user_state,
     #    help="Temporary storage for SCORM data",
     #)     
-    scorm_data = String(
+    scorm_data = LoggingDict(
         scope=Scope.user_state,
         help="Temporary storage for SCORM data",
     )      
@@ -187,7 +187,7 @@ class XblockSCORM(XBlock):
         print "\n[%s]: scorm_set_value for %s" % (stamp,xblock) 
         data = str(data)
         print "[%s]:     GIVEN: %s" % (stamp,type(data)) 
-        self.scorm_data = self.scorm_data + "%s " % stamp
+        self.scorm_data = "DATA = %s\nSTAMP=%s" % (self.scorm_data, stamp)
         scorm_str = self.scorm_data
         print "[%s]:     AFTER UPDATE:  %s" % (stamp,scorm_str) 
         scorm_data["%s AFTER UPDATE %s" % (stamp,data)] =  scorm_str
