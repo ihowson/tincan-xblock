@@ -81,7 +81,7 @@ function XblockSCORM(runtime, element) {
             });
         }
         this.scorm_dump = function() {
-            console.log("Clear");
+            console.log("Dump");
             var handlerUrl = runtime.handlerUrl( element,'scorm_dump');
             $.ajax({
                 type: "POST",
