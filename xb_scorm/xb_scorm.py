@@ -3,130 +3,29 @@
 import pkg_resources
 
 from xblock.core import XBlock
-from xblock.fields import Scope, String, Dict
+from xblock.fields import Scope, BlockScope, String, Dict, Field
 import xblock.fields
 from xblock.fragment import Fragment
+from xblock.runtime import KeyValueStore
 
 # BHS additions
+import sys
 import lxml.etree, time
 import os.path
 from cStringIO import StringIO
 from threading import Lock
 import json
-
-
+import copy
+import inspect
 
 
 from xblock.fields import NO_CACHE_VALUE,  EXPLICITLY_SET, NO_GENERATED_DEFAULTS
-
-class LoggingDict(Dict):
-    
-    lock = Lock()
-     
-    def __set__(self,xblock,value):
-        #import pdb; pdb.set_trace()
-        # Mark the field as dirty and update the cache:
-        stamp = time.time()
-        print "\n[%s]: __set__ for %s" % (stamp,xblock)   
-        print "[%s]:    GIVEN: %s" % (stamp,value)
-        super(LoggingDict,self).__set__(xblock,value)
-        print "[%s]:    END: %s" %   (stamp,xblock) 
-       
-   # def __get__(self, xblock,xblock_class):
-   #     stamp = time.time()
-   #     print "\n[%s]: __get__ for %s" % (stamp,xblock)  
-   #     val = super(self.__class__,self).__get__(xblock,xblock_class)
-   #     print "[%s]:    RETURN: %s" % (stamp,val)
-   #     return val
-        
-    def __get__(self, xblock, xblock_class):
-            
-        """
-        Gets the value of this xblock. Prioritizes the cached value over
-        obtaining the value from the _field_data. Thus if a cached value
-        exists, that is the value that will be returned.
-        """
-        stamp = time.time()
-        print "\n[%s]: __get__" % (stamp)  
-        #try:
-        #    ret = super(LoggingDict,self).__get__(xblock,xblock_class)
-        #except Exception,e:
-        #    import traceback
-        #    traceback.print_exc(file=sys.stdout)
-        #    print "[%s]:    EXCEPTION: %s" % (stamp,e)
-        #print "[%s]:    RETURN: %s" % (stamp,ret)
-        #return ret
-        #
-        # pylint: disable=protected-access
-        if xblock is None:
-            print "[%s]:    RETURN (xblock is None): %s" % (stamp,self)
-            return self
-
-        value = self._get_cached_value(xblock)
-        print "[%s]:    VAL (cache): %s" % (stamp,value)
-        if value is NO_CACHE_VALUE:
-            try:
-                if xblock._field_data.has(xblock, self.name):
-                    value = self.from_json(xblock._field_data.get(xblock, self.name))
-                    print "[%s]:    VAL (field_data): %s" % (stamp,value)
-                elif self.name not in NO_GENERATED_DEFAULTS:
-                    # Cache default value
-                    try:
-                        value = self.from_json(xblock._field_data.default(xblock, self.name))
-                        print "[%s]:    VAL (field_data default): %s" % (stamp,value)
-                    except KeyError:
-                        value = self.default
-                        print "[%s]:    VAL (self default 1): %s" % (stamp,value)
-                else:
-                    value = self.default
-                    print "[%s]:    VAL (self default 2): %s" % (stamp,value)
-                self._set_cached_value(xblock, value)
-            except:
-                import traceback, sys
-                traceback.print_exc(file=sys.stdout)
-
-        # If this is a mutable type, mark it as dirty, since mutations can occur without an
-        # explicit call to __set__ (but they do require a call to __get__)
-        if self.MUTABLE:
-            print "[%s]:    DIRTY" % (stamp)
-            self._mark_dirty(xblock, value)
-        
-        print "[%s]:    RETURN: %s" % (stamp,value)
-        return value
-        
-    def _set_cached_value(self, xblock, value):
-        """Store a value in the xblock's cache, creating the cache if necessary."""
-        # pylint: disable=protected-access
-        stamp = time.time()
-        print "\n[%s]    ACQUIRING LOCK on %s" % (stamp,self.lock)
-        self.lock.acquire()
-        key = self.name
-        print "\n[%s]: _set_cached_value" % stamp
-        print "[%s]:    GIVEN: %s" % (stamp,value)
-        if not hasattr(xblock, '_field_data_cache'):
-            print "[%s]:    CREATE new cache" % stamp
-            xblock._field_data_cache = {}  
-        
-        print "[%s]:    STARTING CACHE: %s" % (stamp,xblock._field_data_cache)
-        if not hasattr(xblock._field_data_cache,key):
-            print "[%s]:    CREATE new cache entry for %s" % (stamp,key)
-            xblock._field_data_cache[key] = {}
-        xblock._field_data_cache[key].update(value)
-        print "[%s]:    CACHE (update) is now: %s" % (stamp,xblock._field_data_cache)
-        print "\n[%s]    RELEASING LOCK on %s" % (stamp,self.lock)
-        self.lock.release()
-        
-
 
 class XblockSCORM(XBlock):
     """
     XBlock wrapper for SCORM content objects
     """
-    #scorm_data = LoggingDict(
-    #    default = {},
-    #    scope=Scope.user_state,
-    #    help="Temporary storage for SCORM data",
-    #)     
+    lock = Lock()
     scorm_data = Dict(
         scope=Scope.user_state,
         help="Temporary storage for SCORM data",
@@ -164,58 +63,34 @@ class XblockSCORM(XBlock):
         
         #import pdb; pdb.set_trace()
         return frag
-        
-        
-    def publish_scorm_data(self,data):
-        #if self.scorm_data.has_key('cmi.core.score.raw') and self.scorm_data.has_key('cmi.core.score.max'):
-        #    event_data = {
-        #        "value" : self.scorm_data['cmi.core.score.raw'],
-        #        "max_value" : self.scorm_data['cmi.core.score.max'],
-        #    }    
-        #    print "Publishing %s" % event_data
-        #    self.runtime.publish(self,'grade',event_data)
-        # TODO: do something if required info isn't present?    
-        pass
-        
-
+            
     @XBlock.json_handler
     def scorm_set_value(self, data, suffix=''):
         """
-        Store data reported by the SCORM object
-        """
-        print "\n[%s]: scorm_set_value for %s" % (stamp,xblock)
-        in_data = str(data)
-        print "[%s]:     GIVEN: %s" % (stamp,in_data)
-        for k, v in data.iteritems():
-            self.scorm_data[k] = v
-        scorm_str = str(self.scorm_data)
-        print "[%s]:     AFTER UPDATE:  %s" % (stamp,scorm_str)
-        return self.scorm_data
-
+        SCORM API handler to report data to the LMS
+        
+        Interestingly, even with the locks, if you read/write to/from
+        self.scorm_data directly, you still have the race condition.
+        
+        Maybe something to do with the caching mechanism (which,
+        it should be noted, this approach bypasses and thus does not
+        benefit from). TODO: More research into why that doesn't work.
+        """   
+        self.lock.acquire()
+        try:
+            scorm_data = self._field_data.get(self,"scorm_data")
+        except KeyError:
+            scorm_data = {}
+        scorm_data.update(data)
+        self._field_data.set(self,"scorm_data", scorm_data)
+        self.lock.release()
 
     @XBlock.json_handler
     def scorm_get_value(self, data, suffix=''):
         """
-        Store data reported by the SCORM object
+        SCORM API handler to get data from the LMS
         """
         return self.scorm_data
-
-
-    @XBlock.json_handler
-    def scorm_commit(self, data, suffix=""):
-        """
-        Publish SCORM scores to the LMS
-        """
-        self.publish_scorm_data(data)
-        scorm_data = { "%s AFTER COMMIT" % time.time() : str(self.scorm_data) }
-        return scorm_data
-        
-       
-    @XBlock.json_handler
-    def scorm_finish(self, data, suffix=""):
-        self.publish_scorm_data(data)
-        scorm_data = { "%s AFTER FINISH" % time.time() : str(self.scorm_data) }
-        return scorm_data
         
     @XBlock.json_handler
     def scorm_clear(self,data,suffix=""):
@@ -223,7 +98,6 @@ class XblockSCORM(XBlock):
         Custom (not in SCORM API) function for emptying xblock scorm data
         """
         del(self.scorm_data)
-        return self.scorm_data
         
     @XBlock.json_handler
     def scorm_dump(self,data,suffix=""):
@@ -231,6 +105,35 @@ class XblockSCORM(XBlock):
         Custom (not in SCORM API) function for viewing xblock scorm data
         """
         return self.scorm_data
+
+    @XBlock.json_handler
+    def scorm_test(self,data,suffix=""):
+        """
+        Custom (not in SCORM API) function for testing frequent writes in a single instance.
+        """
+        del(self.scorm_data)
+        for k,v in data:
+            self.scorm_data[k] = v
+        
+     ##   
+     # The rest of these aren't really implemented yet
+     ##
+    @XBlock.json_handler
+    def scorm_commit(self, data, suffix=""):
+        """
+        SCORM API handler to permanently store data in the LMS
+        """
+        return self.publish_scorm_data(data)
+       
+    @XBlock.json_handler
+    def scorm_finish(self, data, suffix=""):
+        """
+        SCORM API handler to wrap up communication with the LMS
+        """
+        return self.publish_scorm_data(data)
+
+    def publish_scorm_data(self,data):
+        return
         
 
     @staticmethod
@@ -243,3 +146,6 @@ class XblockSCORM(XBlock):
                 </vertical_demo>
              """),
         ]
+        
+if __name__ == "__main__":
+    print "DONE"
