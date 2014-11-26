@@ -1,6 +1,5 @@
 xb_scorm/__init__.py
 xb_scorm/xb_scorm.py
-xb_scorm/static/README.txt
 xb_scorm/static/css/xb_scorm.css
 xb_scorm/static/html/xb_scorm.html
 xb_scorm/static/js/src/xb_scorm.js

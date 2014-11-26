@@ -1,1 +1,1 @@
-from .xb_scorm import XblockSCORM
+from .xb_scorm import SCORMXBlock, SCORMXBlockStudioHack

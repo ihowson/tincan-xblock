@@ -1,6 +1,6 @@
-/* Javascript for XblockSCORM. */
+/* Javascript for SCORMXBlock. */
     
-function XblockSCORM(runtime, element) {	
+function SCORMXBlock(runtime, element) {	
     function report(data) {
     	for (var key in data) {
     		console.log("Data returned from server: " + key + " = " + data[key]);

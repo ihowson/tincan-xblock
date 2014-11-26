@@ -32,7 +32,8 @@ setup(
     ],
     entry_points={
         'xblock.v1': [
-            'xb_scorm = xb_scorm:XblockSCORM',
+            'xb_scorm = xb_scorm:SCORMXBlock',
+            'xb_scorm_studiohack = xb_scorm:SCORMXBlockStudioHack',  # don't use this unless you're debugging in the Workbench
         ]
     },
     package_data=package_data("xb_scorm", ["static", "public"]),
