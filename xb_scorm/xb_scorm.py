@@ -54,14 +54,20 @@ class SCORMXBlock(XBlock):
             frag = Fragment(content=u'<h2>Available SCORMs</h2><ul>')
 
             for s in scorms:
-                frag.add_content(u'<li>%s</li>' % s)
+                # FIXME: These URLs probably work for Articulate Storyline content and nothing else
+                # We should be looking at the manifest file to find the base URL
+                url = '/scorm/%s/index_lms.html' % (dirname)
+
+                # FIXME: these preview links don't load the SCORM API. It might be easier to factor out the student_view and use it here.
+
+                frag.add_content(u'<li>%s (<a href="%s">preview</a>)</li>' % (s, url))
 
             frag.add_content(u'</ul>')
         except Exception, e:
             # This is horrible and nasty, but this way we actually get some debug info.
             import traceback
             print traceback.print_exc()
-            frag = Fragment(e.exc_info())
+            frag = Fragment(unicode(e))
 
         return frag
 
@@ -73,29 +79,16 @@ class SCORMXBlock(XBlock):
         return unicode(resource_content)
 
     def student_view(self, context=None):
-        scorm_dir = os.path.join("static", "scorm", "exe1")
-        scorm_index = os.path.join(scorm_dir, "index.html")
-        scorm_html = self.resource_string(scorm_index)
-        root_el = lxml.etree.HTML(str(scorm_html))
-        js_filenames = []
-        for js_el in root_el.xpath("//script[@type='text/javascript' and @src != '']"):
-            js_filenames.append(js_el.get("src"))
-            js_el.getparent().remove(js_el)
+        # FIXME: look in our local config for the directory/file to load
+        url = '/scorm/USBS Referencing/index_lms.html'
+        html_str = pkg_resources.resource_string(__name__, "templates/scorm.html")
+        print html_str
+        frag = Fragment(unicode(html_str).format(self=self, url=url))
 
-        css_filenames = []
-        for css_el in root_el.xpath("//link[@rel='stylesheet' and @href != '']"):
-            css_filenames.append(css_el.get("href"))
-            css_el.getparent().remove(css_el)
-
-        html = lxml.etree.tostring(root_el, encoding=unicode, method="html")
-        frag = Fragment(html)
-        for fn in js_filenames:
-            frag.add_javascript(self.resource_string(os.path.join(scorm_dir, fn)))
-        for fn in css_filenames:
-            frag.add_css(self.resource_string(os.path.join(scorm_dir, fn)))
-        #frag.add_javascript(self.resource_string("static/js/src/scorm-api-wrapper/src/JavaScript/SCORM_API_wrapper.js"))
-        frag.add_javascript(self.resource_string("static/js/src/xb_scorm.js"))
-        frag.initialize_js('SCORMXBlock')
+        frag.add_javascript(self.resource_string("public/rte.js"))
+        frag.add_javascript(self.resource_string("public/SCORM_API_wrapper.js"))
+        frag.add_javascript(self.resource_string("public/frame.js"))
+        frag.initialize_js('scorm_init')
 
         return frag
 
