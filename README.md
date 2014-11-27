@@ -61,4 +61,4 @@ If this filesystem location doesn't work for you, you can change it in `xb_scorm
 
 # Notes
 
-Note that this means that your content is viewable to anyone who knows the URL. Quizzes and whatnot won't work, but given the manifest, there's enough information for someone to extract your entire SCORM if they wish.
+As the content is simply 'dumped on a web server', any of it can be viewed by anyone who knows the URL. There are no permissions or security yet.
