@@ -49,6 +49,19 @@ On Devstack, modify `/edx/app/edxapp/edx-platform/lms/urls.py`:
         # in debug mode, allow any template to be rendered (most useful for UX reference templates)
         urlpatterns += url(r'^template/(?P<template>.+)$', 'debug.views.show_reference_template'),
 
+Also modify `/edx/app/edxapp/edx-platform/mms/urls.py`:
+
+    if settings.DEBUG:
+        try:
+            from .urls_dev import urlpatterns as dev_urlpatterns
+            urlpatterns += dev_urlpatterns
+        except ImportError:
+            pass
+
+        # SCORM content (NEW)
+        from django.conf.urls.static import static
+        urlpatterns += static('/scorm/', document_root='/edx/app/edxapp/edx-platform/scorm/')
+
 In production, add to `/edx/app/nginx/sites-enabled/lms`:
 
     location ~ ^/scorm {
