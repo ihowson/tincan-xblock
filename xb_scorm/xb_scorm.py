@@ -27,12 +27,18 @@ class SCORMXBlock(XBlock):
 
     scorm_dir = String(help="Directory that the SCORM content object is stored in", default=None, scope=Scope.settings)
 
-
     lock = Lock()
     scorm_data = Dict(
         scope=Scope.user_state,
         help="Temporary storage for SCORM data",
     )
+
+    # SCORM 2004 fields
+    cmi_completion_status = String(default='unknown', scope=Scope.user_state)
+    # cmi_entry = String(default=TODO, scope=Scope.user_state)
+
+    def __init__(self, *args, **kwargs):
+        XBlock.__init__(self, *args, **kwargs)
 
     def resource_string(self, path):
         """Handy helper for getting resources from our kit."""
@@ -88,9 +94,46 @@ class SCORMXBlock(XBlock):
         Called when submitting the form in Studio.
         """
         self.scorm_dir = data.get('scorm_dir')
-        print 'new dir is %s' % self.scorm_dir
 
         return {'result': 'success'}
+
+    @XBlock.json_handler
+    def sco_req(self, data, suffix=''):
+        """
+        JSON request from the student's SCO.
+
+        This is multiplexed to handle all of the GetValue/SetValue/etc requests
+        through one entry point.
+        """
+
+        assert 'method' in data.keys(), 'not implemented'  # should return a 'bad request' to SCO
+
+        method = data['method']
+
+        if method == 'getValue':
+            assert 'name' in data.keys(), 'TODO return "bad request"'
+            result = self.model.get(data['name'])
+        elif method == 'setValue':
+            assert 'name' in data.keys(), 'TODO return "bad request"'
+            assert 'value' in data.keys(), 'TODO return "bad request"'
+            result = self.model.set(data['name'])
+        else:
+            print 'not implemented method %s' % method
+            assert False, 'not implemented'  # should return a 'not implemented' to SCO
+
+        if hasattr(result, 'error_code'):
+            # it's an error
+            error_code = result.error_code
+            value = result.value
+        else:
+            # it's a success with value
+            error_code = 0
+            value = result
+
+        # print 'FIXME STUB: sco_req %s' % data
+        # self.scorm_dir = data.get('scorm_dir')
+
+        return {'result': 'success', 'error_code': error_code, 'value': value}
 
     def load_resource(self, resource_path):
         """
@@ -105,16 +148,15 @@ class SCORMXBlock(XBlock):
 
         # TODO it might be nice to confirm that the content is actually present
 
-        # FIXME: look in our local config for the directory/file to load
+        # TODO at this point, we need to load the manifest to find the entry point to point the iframe at
         url = '/scorm/%s/index_lms.html' % self.scorm_dir
         html_str = pkg_resources.resource_string(__name__, "templates/scorm.html")
-        print html_str
         frag = Fragment(unicode(html_str).format(self=self, url=url))
 
         frag.add_javascript(self.resource_string("public/rte.js"))
         frag.add_javascript(self.resource_string("public/SCORM_API_wrapper.js"))
         frag.add_javascript(self.resource_string("public/frame.js"))
-        frag.initialize_js('scorm_init')
+        frag.initialize_js('SCORMXBlock')
 
         return frag
 
@@ -195,7 +237,51 @@ class SCORMXBlock(XBlock):
         return [
             ("SCORM XBlock",
              """<xb_scorm scorm_dir='USBS Referencing'/>"""),
+             # """<xb_scorm scorm_dir='USBS Referencing Tincan'/>"""),
         ]
+
+    # SCORM 2004 data model
+    class SCORMError(object):
+        def __init__(self, error_code, value=''):
+            self.error_code = error_code
+            self.value = value
+
+    def get(self, key):
+        if key == 'cmi.completion_status':
+            return self.cmi_completion_status
+        elif key == 'cmi.mode':
+            return 'normal'
+        elif key == 'cmi.success_status':
+            return 'unknown'
+        elif key == 'cmi.suspend_data':
+            return SCORMError(403)
+        elif key == 'cmi.scaled_passing_score':
+            assert False, 'TODO you need to modify cmi.success_status to handle this value'
+        elif key == 'cmi.completion_threshold':
+            assert False, 'TODO you need to modify cmi.completion_status to handle this value'
+        else:
+            print "SCORM2004::get('%s'): unknown key" % key
+            assert False, 'get return not implemented'
+
+    def set(self, key, value):
+        if key == 'cmi.completion_status':
+            self.cmi_completion_status = value  # TODO check the value we're trying to write
+        elif key == 'cmi.exit':  # write-only
+            if value == 'suspend':
+                self.cmi_entry = 'resume'
+            # elif value == 'logout':
+                # self.cmi_entry = '
+            else:
+                assert False, 'TODO not implemented verb %s for cmi.exit' % value
+        elif key == 'cmi.scaled_passing_score':
+            assert False, 'TODO you need to modify cmi.success_status to handle this value'
+        elif key == 'cmi.completion_threshold':
+            assert False, 'TODO you need to modify cmi.completion_status to handle this value'
+        # elif key == 'cmi.suspend_data':
+            # assert False, 'TODO suspend_data'
+        else:
+            print "SCORM2004::set('%s'): unknown key" % key
+            assert False, 'set return not implemented'
 
 
 class SCORMXBlockStudioHack(SCORMXBlock):
@@ -220,4 +306,5 @@ class SCORMXBlockStudioHack(SCORMXBlock):
         return [
             ("SCORM XBlock (Studio view)",
              """<xb_scorm_studiohack scorm_dir='USBS Referencing'/>"""),
+             # """<xb_scorm_studiohack scorm_dir='USBS Referencing Tincan'/>"""),
         ]

@@ -1,19 +1,19 @@
 var rteErrorCode = '0';
 
-var LOGGING = true;
+var LOGGING = false;
 
 var g_csrf_token = null;
+var g_json_url = null;
 
 function ajaj(object) {
-    console.log("STUB AJAJ: ", object);
-    return null; 
-    
     var xhr = new XMLHttpRequest();
     json_request = JSON.stringify(object);
 
     // Unfortunately, we use synchronous requests. This is because the SCORM RTE expects us to use the return value to convey information; there's no way to connect an asynchronous block to it.
 
-    xhr.open("POST", "/scorm/json", false);
+    // $.post(handlerUrl, JSON.stringify(data)).done(function(response) {
+
+    xhr.open("POST", g_json_url, false);
     xhr.setRequestHeader("X-CSRFToken", g_csrf_token);
     xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.send(json_request);
@@ -32,9 +32,11 @@ function ajaj(object) {
     }
 }
 
-function tspInit(window, prefix, csrf_token, callback) {
-    console.log('tspInit');
+function tspInit(window, json_url, prefix, csrf_token, callback) {
+    if (LOGGING) console.log('tspInit');
     
+    console.log('csrf_token = ', csrf_token);
+    g_json_url = json_url;
     // prefix = typeof prefix !== 'undefined' ? prefix : '';
     // callback = typeof callback !== 'undefined' ? callback : console.log;
     
@@ -47,29 +49,9 @@ function tspInit(window, prefix, csrf_token, callback) {
     // Most functions are supposed to set the error code.
 
     api.Initialize = function() {
-        console.log('LMSInitialize');
-
-        console.log('FIXME STUB Initialize');
-        return true;
-
-
-        
-        // TODO probably not much to do here, maybe verify that the user auth is correct before they get started
-
-        // verify server connectivity
-        ret = ajaj({'method': 'init'});
-
-        if (ret === null) {
-            // something went wrong
-            return false;
-        }
-
-        rteErrorCode = ret['errorCode'];
-        if (rteErrorCode == '0') {
-            return true; // true denotes success
-        } else {
-            return false;
-        }
+        if (LOGGING) console.log('LMSInitialize');
+        // don't need to do anything
+        return "true";
     }
 
     // window.API.LMSTerminate = function() {
@@ -98,7 +80,7 @@ function tspInit(window, prefix, csrf_token, callback) {
             // something went wrong
             rteErrorCode = '301'; // General Get Failure
         } else {
-            rteErrorCode = ret['errorCode'];
+            rteErrorCode = ret['error_code'];
         }
 
         if (rteErrorCode == '0') {
@@ -123,11 +105,10 @@ function tspInit(window, prefix, csrf_token, callback) {
     
     // window.API.LMSSetValue = function(varname, varvalue) {
     api.SetValue = function(varname, varvalue) {
-        varname = prefix + varname;
-    
-        // TODO return 'true' if success or 'false' and set error code if it fails
-
+        console.log('LMSSetValue attempt ', varname, '=', varvalue);
         /* REMOVED UNTIL WE UNDERSTAND THIS
+        // varname = prefix + varname;
+
         var m = varname.match(/([0-9]+)\.cmi\.interactions\.([0-9]+)\.id/);
         if (m != null) {
             storage.setItem('{{scorm.id}}.cmi.interactions._count', parseInt(m[2]) + 1);
@@ -151,8 +132,24 @@ function tspInit(window, prefix, csrf_token, callback) {
             window.scormStatus.session_time = varvalue;
         */
     
-        rteErrorCode = '101'; // general exception, not implemented
-        console.log('LMSSetValue', varname, '=', varvalue);
+        ret = ajaj({'method': 'setValue', 'name': varname, 'value': varvalue});
+
+    /*
+        if (ret === null) {
+            // something went wrong
+            rteErrorCode = '351'; // General Set Failure
+        } else {
+            rteErrorCode = ret['error_code'];
+        }
+
+        if (rteErrorCode == '0') {
+            success = 'true';
+        } else {
+            success = 'false';
+        }
+
+        console.log('LMSSetValue', varname, '=', varvalue, ', success=', success, ', rteErrorCode=', rteErrorCode);
+        */
     }
     
     api.Commit = function() {
