@@ -46,7 +46,8 @@ class SCORMXBlock(XBlock):
     )
 
     # Tin Can data model
-    tc_activities_state = String(default='', scope=Scope.user_state)
+    tc_activities_state = Dict(default={}, scope=Scope.user_state)  # stateId -> JSON document
+    tc_statements = Dict(default={}, scope=Scope.user_state)  # statementId -> JSON document
 
 
 
@@ -157,6 +158,17 @@ class SCORMXBlock(XBlock):
 
         return Response(json.dumps(response), content_type='application/json')
 
+    @staticmethod
+    def requireParams(dictionary, expected_keys):
+        '''
+        expected_keys is a list of key names that should be present in
+        'dictionary'. If any are missing, raise a 400 Bad Request.
+        '''
+
+        for k in expected_keys:
+            if k not in dictionary.keys():
+                raise webob.exc.HTTPBadRequest('expected key "%s", not found' % k)
+
     def tincan_handle(self, method, suffix, post):
         '''
         Returns a JSON string for a successful 200 request. Raises a
@@ -169,26 +181,47 @@ class SCORMXBlock(XBlock):
         print 'method %s suffix %s' % (method, suffix)
         if suffix == 'activities/state':
             if method == 'GET':
-                return self.tc_activities_state
+                if 'stateId' in post.keys():
+                    # return a single document
+                    sid = post['stateId']
+                    if sid in self.tc_activities_state.keys():
+                        return tc_activities_state[sid]
+                    else:
+                        return ''
+                else:
+                    # this should return the available ids
+                    pass  # not implemented
+            elif method == 'PUT':
+                self.requireParams(post, ['stateId', 'content'])
+                # TODO handle context parameters
+                self.tc_activities_state[post['stateId']] = post['content']
+                # self.save()
+
+                print 'activities'
+                print self.tc_activities_state
+
+                raise webob.exc.HTTPNoContent
         elif suffix == 'statements':
             if method == 'PUT':
-                # if it already exists and is different, return 409 Conflict. If same, return 204 No Content.
-                # if not already exists, store it and return 204 No Content
-                # TODO does 'different' means logically (at JSON level) or identical at byte level?
+                self.requireParams(post, ['statementId', 'content'])
 
-            from pprint import pprint
-            print '--- content'
-            pprint(post['content'])
+                sid = post['statementId']
+                content = post['content']
 
-            print '--- statementId'
-            pprint(post['statementId'])
+                # does it already exist?
+                if sid in self.tc_statements.keys():
+                    # If it's different, return 409 Conflict. If same, return 204 No Content.
+                    # TODO: would be better to check logical JSON equality rather than byte equality
+                    if self.tc_statements[sid] == content:
+                        raise webob.exc.HTTPNoContent()
+                    else:
+                        raise webob.exc.HTTPConflict()
+                else:
+                    # store it
+                    self.tc_statements[sid] = content
+                    # self.save()
+                    raise webob.exc.HTTPNoContent()
 
-            # statement_id = params['statementId']
-            # print 'sid %s, body %s' % (statement_id, body)
-            # print 
-
-            # TODO implement 409 Conflict response where appropriate
-            pass
         '''
         elif suffix == 'activities/profile' and method == 'POST':
             pass
@@ -330,6 +363,7 @@ block is the XBlock from which the event originates.
 
 '''
 
+    '''
     @XBlock.json_handler
     def scorm_set_value(self, data, suffix=''):
         """
@@ -351,55 +385,9 @@ block is the XBlock from which the event originates.
         self._field_data.set(self, "scorm_data", scorm_data)
         self.lock.release()
 
-    @XBlock.json_handler
-    def scorm_get_value(self, data, suffix=''):
-        """
-        SCORM API handler to get data from the LMS
-        """
-        return self.scorm_data
-
-    @XBlock.json_handler
-    def scorm_clear(self, data, suffix=""):
-        """
-        Custom (not in SCORM API) function for emptying xblock scorm data
-        """
-        del(self.scorm_data)
-
-    @XBlock.json_handler
-    def scorm_dump(self, data, suffix=""):
-        """
-        Custom (not in SCORM API) function for viewing xblock scorm data
-        """
-        return self.scorm_data
-
-    @XBlock.json_handler
-    def scorm_test(self, data, suffix=""):
-        """
-        Custom (not in SCORM API) function for testing frequent writes in a single instance.
-        """
-        del(self.scorm_data)
-        for k, v in data:
-            self.scorm_data[k] = v
-
-     ##
-     # The rest of these aren't really implemented yet
-     ##
-    @XBlock.json_handler
-    def scorm_commit(self, data, suffix=""):
-        """
-        SCORM API handler to permanently store data in the LMS
-        """
-        return self.publish_scorm_data(data)
-
-    @XBlock.json_handler
-    def scorm_finish(self, data, suffix=""):
-        """
-        SCORM API handler to wrap up communication with the LMS
-        """
-        return self.publish_scorm_data(data)
-
     def publish_scorm_data(self, data):
         return
+        '''
 
     @staticmethod
     def workbench_scenarios():
