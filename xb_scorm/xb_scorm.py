@@ -128,6 +128,8 @@ class SCORMXBlock(XBlock):
             assert False, 'unknown method %s' % data.method
 
         # TODO look at rebind_noauth_module_to_user when we know the intended user
+        # print 'scope_ids: ', self.scope_ids
+        # print user
 
         method = None
 
@@ -186,7 +188,7 @@ class SCORMXBlock(XBlock):
                     # return a single document
                     sid = post['stateId']
                     if sid in self.tc_activities_state.keys():
-                        return tc_activities_state[sid]
+                        return self.tc_activities_state[sid]
                     else:
                         return ''
                 else:
@@ -197,9 +199,6 @@ class SCORMXBlock(XBlock):
                 # TODO handle context parameters
                 self.tc_activities_state[post['stateId']] = post['content']
                 # self.save()
-
-                print 'activities'
-                print self.tc_activities_state
 
                 raise webob.exc.HTTPNoContent
         elif suffix == 'statements':
@@ -220,7 +219,12 @@ class SCORMXBlock(XBlock):
                 else:
                     # store it
                     self.tc_statements[sid] = content
-                    # self.save()
+
+                    # TODO: eventually, we can process these asynchronously
+                    # using celery so we don't block the web server. For now,
+                    # this is easier (but slower).
+                    self.tc_statement_process(content)
+
                     raise webob.exc.HTTPNoContent()
 
         '''
@@ -232,11 +236,6 @@ class SCORMXBlock(XBlock):
 
         print 'tincan_handle: unhandled method %s %s' % (method, suffix)
         return webob.exc.HTTPNotImplemented()  # FIXME: change this to 'unknown method' when appropriate (when you've implemented a good number of endpoints)
-
-    def handle(self, handler_name, request, suffix=''):
-        # print handler_name, request, suffix
-        print 'handler: handler_name'
-        return super(SCORMXBlock, self).handle(handler_name, request, suffix)
 
     @XBlock.json_handler
     def sco_req(self, data, suffix=''):
@@ -271,9 +270,6 @@ class SCORMXBlock(XBlock):
             error_code = 0
             value = result
 
-        # print 'FIXME STUB: sco_req %s' % data
-        # self.scorm_dir = data.get('scorm_dir')
-
         return {'result': 'success', 'error_code': error_code, 'value': value}
 
     def load_resource(self, resource_path):
@@ -289,8 +285,6 @@ class SCORMXBlock(XBlock):
         Returns None if we couldn't find an entry point.
         '''
 
-        # TODO put some error checking around this, especially if tincan.xml is missing
-        print os.path.join(self.scorm_path, self.scorm_dir, 'tincan.xml')
         try:
             tree = etree.parse(os.path.join(self.scorm_path, self.scorm_dir, 'tincan.xml'))
         except IOError:
@@ -299,6 +293,84 @@ class SCORMXBlock(XBlock):
         # root = tree.getroot()
         ns = {'t': 'http://projecttincan.com/tincan.xsd'}
         return tree.find('./t:activities/t:activity/t:launch', namespaces=ns).text
+
+    def tc_statement_process(self, content):
+        '''
+        content: JSON statement. Doesn't need to be validated.
+
+        TODO: this object must already be bound to a username'''
+
+        # TODO verify that the user is authorised to add the requested statement - there is information about the user embedded in the content object.
+
+        # TODO test what happens when a bogus input string goes in here. Probably need to catch an exception and reject the request.
+        statement = json.loads(content)
+
+        print 'statement ', statement
+
+        # We're looking for specific statements that Articulate generate on quiz completion.
+        # TODO verify that the keys exist before you access them
+
+        if  'object' not in statement.keys() or 'verb' not in statement.keys() or 'result' not in statement.keys():
+            print 'missing something'
+            return
+
+        object_id = statement['object']['id']
+        verb = statement['verb']['id']
+
+        # TODO we need to be able to differentiate between a quiz within a course and the entire course
+
+        if verb in 'http://adlnet.gov/expapi/verbs/passed' or verb in 'http://adlnet.gov/expapi/verbs/passed':
+            if 'score' not in statement['result'].keys():
+                print 'missing score'
+                return
+
+            if 'context' not in statement.keys():
+                print 'missing context'
+                # print statement.keys()
+                return
+
+            k = statement['result']['score'].keys()
+            if 'raw' not in k or 'max' not in k or 'min' not in k or 'scaled' not in k:
+                print 'missing something in score'
+                return
+
+            scaled_result = statement['result']['score']['scaled']
+            raw_result = statement['result']['score']['raw']
+            max_result = statement['result']['score']['max']
+            # min_result = statement['result']['score']['min']
+            success_result = statement['result']['success']
+            username = statement['context']['registration']
+
+            # TODO check what the verb was
+
+            # TODO SECURITY obviously, we are trusting the client to give us the correct username. This is strictly for testing only. You would be very silly to deploy this to the public Internet.
+
+            print '*** user %s completed quiz %s with score %f (%f/%f). success=%s' % (username, object_id, scaled_result * 100.0, raw_result, max_result, statement['result']['success'])
+
+            # self.rebind_noauth_module_to_user(username)
+
+            # public the 'quiz attempted' message
+            self.has_grade = True
+
+            print 'publishing grade event'
+            event = {
+                'value': raw_result,
+                'max_value': max_result,
+                'user_id': username
+            }
+
+            self.runtime.publish(self, 'grade', event)
+
+            print 'published grade event'
+
+        # TODO still have to say who completed it so we can generate the edx event
+
+
+        # print dir(self)
+        # print 'tc_statement_process: my user is %s' % self.user
+        # print content
+
+        # assert False, 'TODO implement user check'
 
     def student_view(self, context=None):
         if self.scorm_dir is None:
@@ -315,20 +387,24 @@ class SCORMXBlock(XBlock):
         # modify it to fit Django's CSRF/auth system. We will have to perform
         # CSRF and authentication checks manually.
         endpoint = self.runtime.handler_url(self, 'tincan_req', thirdparty=True)
-        print 'endpoint: %s' % endpoint
 
         # endpoint must always end with /
         if not endpoint.endswith('/'):
             endpoint = '%s/' % endpoint
 
+        print self.scope_ids
+
+        # TODO review use of registration/activity_id/auth
         param_str = urllib.urlencode({
             'endpoint': endpoint,
             # 'csrftoken': csrf(
+            # 'username': 'thisistheusername',
             # 'foo': 'bar',
-            # 'auth': 'OjFjMGY4NTYxNzUwOGI4YWY0NjFkNzU5MWUxMzE1ZGQ1',
+            'auth': 'OjFjMGY4NTYxNzUwOGI4YWY0NjFkNzU5MWUxMzE1ZGQ1',
             # 'actor': '{"name": ["First Last"], "mbox": ["mailto:firstlast@mycompany.com"]}',
             # 'activity_id': '61XkSYC1ht2_course_id',
-            # 'registration': '760e3480-ba55-4991-94b0-01820dbd23a2'
+            'activity_id': 'this_is_activity_id',
+            'registration': self.scope_ids.user_id
         })
 
         entry_point = self.get_launch_html()
@@ -394,49 +470,6 @@ block is the XBlock from which the event originates.
              # """<xb_scorm scorm_dir='USBS Referencing'/>"""),
              """<xb_scorm override_scorm_path='./scorm' scorm_dir='USBS Referencing Tincan'/>"""),
         ]
-
-    # SCORM 2004 data model
-    class SCORMError(object):
-        def __init__(self, error_code, value=''):
-            self.error_code = error_code
-            self.value = value
-
-    def get(self, key):
-        if key == 'cmi.completion_status':
-            return self.cmi_completion_status
-        elif key == 'cmi.mode':
-            return 'normal'
-        elif key == 'cmi.success_status':
-            return 'unknown'
-        elif key == 'cmi.suspend_data':
-            return SCORMError(403)
-        elif key == 'cmi.scaled_passing_score':
-            assert False, 'TODO you need to modify cmi.success_status to handle this value'
-        elif key == 'cmi.completion_threshold':
-            assert False, 'TODO you need to modify cmi.completion_status to handle this value'
-        else:
-            print "SCORM2004::get('%s'): unknown key" % key
-            assert False, 'get return not implemented'
-
-    def set(self, key, value):
-        if key == 'cmi.completion_status':
-            self.cmi_completion_status = value  # TODO check the value we're trying to write
-        elif key == 'cmi.exit':  # write-only
-            if value == 'suspend':
-                self.cmi_entry = 'resume'
-            # elif value == 'logout':
-                # self.cmi_entry = '
-            else:
-                assert False, 'TODO not implemented verb %s for cmi.exit' % value
-        elif key == 'cmi.scaled_passing_score':
-            assert False, 'TODO you need to modify cmi.success_status to handle this value'
-        elif key == 'cmi.completion_threshold':
-            assert False, 'TODO you need to modify cmi.completion_status to handle this value'
-        # elif key == 'cmi.suspend_data':
-            # assert False, 'TODO suspend_data'
-        else:
-            print "SCORM2004::set('%s'): unknown key" % key
-            assert False, 'set return not implemented'
 
 
 class SCORMXBlockStudioHack(SCORMXBlock):
