@@ -21,8 +21,6 @@ import urllib
 from webob import Response
 import webob.exc
 
-# from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
-
 from xblock.core import XBlock
 from xblock.fields import Scope, String, Dict  # , Field, BlockScope
 from xblock.fragment import Fragment
@@ -67,7 +65,6 @@ class SCORMXBlock(XBlock):
         data = pkg_resources.resource_string(__name__, path)
         return data.decode("utf8")
 
-    # @ensure_csrf_cookie
     def studio_view(self, context=None):
         try:
             try:
@@ -117,16 +114,20 @@ class SCORMXBlock(XBlock):
         return {'result': 'success'}
 
     @XBlock.handler
-    # @XBlock.json_handler
-    # @csrf_exempt
     def tincan_req(self, data, suffix=''):
         '''
         JSON endpoint for Tin Can client requests.
+
         All methods are multiplexed through this function.
+
+        This is an unauthenticated handler, so we must check CSRF and user auth
+        manually.
         '''
 
         if data.method != 'POST':
             assert False, 'unknown method %s' % data.method
+
+        # TODO look at rebind_noauth_module_to_user when we know the intended user
 
         method = None
 
@@ -178,7 +179,7 @@ class SCORMXBlock(XBlock):
         '''
 
         # demux
-        print 'method %s suffix %s' % (method, suffix)
+        print 'method %s %s' % (method, suffix)
         if suffix == 'activities/state':
             if method == 'GET':
                 if 'stateId' in post.keys():
@@ -285,6 +286,7 @@ class SCORMXBlock(XBlock):
     def get_launch_html(self):
         '''
         Returns the 'entry point' or launcher HTML file name for the SCO.
+        Returns None if we couldn't find an entry point.
         '''
 
         # TODO put some error checking around this, especially if tincan.xml is missing
@@ -292,13 +294,12 @@ class SCORMXBlock(XBlock):
         try:
             tree = etree.parse(os.path.join(self.scorm_path, self.scorm_dir, 'tincan.xml'))
         except IOError:
-            assert False, 'TODO NOT IMPLEMENTED: handle missing tincan.xml'
+            return None
 
         # root = tree.getroot()
         ns = {'t': 'http://projecttincan.com/tincan.xsd'}
         return tree.find('./t:activities/t:activity/t:launch', namespaces=ns).text
 
-    # @ensure_csrf_cookie
     def student_view(self, context=None):
         if self.scorm_dir is None:
             return Fragment(u"<h1>Error</h1><p>There should be content here, but the course creator has not configured it yet. Please let them know.</p><p>If you're the course creator, you need to go into edX Studio and hit Edit on this block. Choose a SCORM object and click Save. Then, the content should appear here.</p>")
@@ -308,17 +309,18 @@ class SCORMXBlock(XBlock):
 
         # TODO it might be nice to confirm that the content is actually present
 
-        endpoint = self.runtime.handler_url(self, 'tincan_req')
-        print endpoint
+        # The 'thirdparty=True' parameter allows CSRF-less requests to be made
+        # to this endpoint. This is important as we don't directly control the
+        # content that is running on the client machine. We therefore can't
+        # modify it to fit Django's CSRF/auth system. We will have to perform
+        # CSRF and authentication checks manually.
+        endpoint = self.runtime.handler_url(self, 'tincan_req', thirdparty=True)
+        print 'endpoint: %s' % endpoint
 
-        # print dir(self)
-        # print context
+        # endpoint must always end with /
+        if not endpoint.endswith('/'):
+            endpoint = '%s/' % endpoint
 
-        # TODO: you need to think VERY CAREFULLY about how to handle CSRF/auth here. CSRF checks are currently DISABLED on the endpoint.
-        # Hopefully this is something that the TinCan folks have already thought about, so you might just need to read the spec properly to find out how to solve it.
-        # FIXME: csrf isn't working through edX right now (the cookies/csrf objs aren't visible. You've tweaked workbench to use csrf_exempt on the handler, but this might not work in edx proper. Consider monkeypatching edx to allow an exemption here?
-        # If you pass csrftoken in to the URL params then it passes back happily, but it's not working for some reason
-        # Already burned half a day on this.
         param_str = urllib.urlencode({
             'endpoint': endpoint,
             # 'csrftoken': csrf(
@@ -329,19 +331,14 @@ class SCORMXBlock(XBlock):
             # 'registration': '760e3480-ba55-4991-94b0-01820dbd23a2'
         })
 
-        # print param_str
+        entry_point = self.get_launch_html()
+        if entry_point is None:
+            return Fragment(u"<h1>Error</h1><p>This content could not be displayed.</p><p>If you're the course creator, tincan.xml could not be loaded.</p>")
 
         url = '/scorm/%s/%s?%s' % (self.scorm_dir, self.get_launch_html(), param_str)
 
         html_str = pkg_resources.resource_string(__name__, "templates/tincan.html")
         frag = Fragment(unicode(html_str).format(self=self, url=url))
-
-        frag.add_javascript(self.resource_string("public/csrf.js"))
-        # frag.initialize_js('csrf_init')
-        # frag.add_javascript(self.resource_string("public/rte.js"))
-        # frag.add_javascript(self.resource_string("public/SCORM_API_wrapper.js"))
-        # frag.add_javascript(self.resource_string("public/frame.js"))
-        # frag.initialize_js('SCORMXBlock')
 
         return frag
 
