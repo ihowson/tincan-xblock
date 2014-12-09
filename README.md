@@ -1,3 +1,7 @@
+# WARNING
+
+This block does not implement any security features to stop a student from faking their test results. It is strictly for test purposes at this time. You have been warned.
+
 # What is it?
 Experimental XBlock for hosting a SCORM content object. Currently it has built in trivial quiz for testing purposes, but eventually it will allow the user to upload an arbitrary SCORM zipfile.
 
