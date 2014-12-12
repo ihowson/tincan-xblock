@@ -47,6 +47,16 @@ class SCORMXBlock(XBlock):
         help="Temporary storage for SCORM data",
     )
 
+    display_name = String(
+        default="Lecture", scope=Scope.settings,
+        help="Display name"
+    )
+
+    def max_score(self):
+        """The maximum raw score of our problem."""
+        # TODO: we should check tincan.xml for this value
+        return 100
+
     # Tin Can data model
     tc_activities_state = Dict(default={}, scope=Scope.user_state)  # stateId -> JSON document
     tc_statements = Dict(default={}, scope=Scope.user_state)  # statementId -> JSON document
@@ -128,7 +138,7 @@ class SCORMXBlock(XBlock):
         # sessionid cookie). There's definitely no CSRF protection, though. We
         # can pass that in the cookie or through the JSON requests and verify
         # it manually.
-        assert self.scope_ids is not None and self.scope_ids.user_id is not None
+        assert self.scope_ids is not None and self.scope_ids.user_id is not None, 'no scope id'
 
         if data.method != 'POST':
             raise webob.exc.HTTPMethodNotAllowed()
@@ -136,7 +146,7 @@ class SCORMXBlock(XBlock):
         method = None
 
         # TODO FIXME IMPORTANT: check csrf token explicitly here
-        print 'FIXME: no CSRF check on tincan_req yet'
+        print 'FIXME: no CSRF check on tincan_req yet. user=%s' % self.scope_ids.user_id
 
         # Workbench gives us annoying 'student=student_1activities/state?method=GET' things. Fix it up.
         if 'student' in data.params.keys() and suffix == '':
@@ -311,7 +321,10 @@ class SCORMXBlock(XBlock):
                 'value': raw_result,
                 'max_value': max_result,
             }
-            self.runtime.publish(self, 'grade', event)
+
+            # On my devstack, 'runtime' is sufficient. In (slightly older) production, this needs to be xmodule_runtime.
+            # 12 hours to figure this out, but at least I know how the entire grade submission chain works now...
+            self.xmodule_runtime.publish(self, 'grade', event)
 
     def student_view(self, context=None):
         if self.scorm_dir is None:
