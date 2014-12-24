@@ -11,6 +11,7 @@ I'm targeting Articulate Storyline first per the document at https://en-uk.artic
 # FIXME: nasty
 DEFAULT_SCORM_PATH = '/edx/app/edxapp/edx-platform/scorm'
 
+from datetime import datetime
 import json
 from lxml import etree
 import os
@@ -18,6 +19,8 @@ import os.path
 import pkg_resources
 from threading import Lock
 import urllib
+import uuid
+
 from webob import Response
 import webob.exc
 
@@ -140,8 +143,8 @@ class SCORMXBlock(XBlock):
         # it manually.
         assert self.scope_ids is not None and self.scope_ids.user_id is not None, 'no scope id'
 
-        if data.method != 'POST':
-            raise webob.exc.HTTPMethodNotAllowed()
+        if data.method not in ['POST', 'PUT', 'GET']:
+            raise webob.exc.HTTPMethodNotAllowed('%s not allowed' % data.method)
 
         method = None
 
@@ -215,6 +218,7 @@ class SCORMXBlock(XBlock):
                 raise webob.exc.HTTPNoContent()
         elif suffix == 'statements':
             if method == 'PUT':
+                # TODO: I'm not clear on what the difference between PUT and POST is at this stage. Storyline only seems to be generating PUT.
                 self.requireParams(post, ['statementId', 'content'])
 
                 sid = post['statementId']
@@ -224,11 +228,34 @@ class SCORMXBlock(XBlock):
                 if sid in self.tc_statements.keys():
                     # If it's different, return 409 Conflict. If same, return 204 No Content.
                     # TODO: would be better to check logical JSON equality rather than byte equality
+                    # TODO: if we're modifying fields (e.g. by adding 'id', 'stored' and 'timestamp', how does that affect our idea of equality? Do we just check to see that the fields that were specified by the AP were equal? Surely the spec has more detail on what 'equal' means.
                     if self.tc_statements[sid] == content:
                         raise webob.exc.HTTPNoContent()
                     else:
                         raise webob.exc.HTTPConflict()
                 else:
+                    # we're going to store it as a new statement, but we might need to add some fields first
+
+                    # parse it back to a Python object so we can manipulate it
+                    statement = json.loads(content)
+                    # TODO: error checking in case the statement was not parseable. If not, return HTTPBadRequest
+
+                    # check that all required fields are present
+                    if not all([key in statement.keys() for key in ['actor', 'verb', 'object']]):
+                        raise webob.exc.HTTPBadRequest('missing a key')
+
+                    if 'id' not in statement.keys():
+                        statement['id'] = str(uuid.uuid4())  # TODO: check the UUID format required; the spec has pending clarifications
+
+                    # set 'stored'
+                    statement['stored'] = datetime.now().isoformat()
+
+                    if 'timestamp' not in statement.keys():
+                        statement['timestamp'] = statement['stored']
+
+                    # convert back to JSON
+                    content = json.dumps(statement)
+
                     # store it
                     self.tc_statements[sid] = content
 
@@ -238,9 +265,12 @@ class SCORMXBlock(XBlock):
                     self.tc_statement_process(content)
 
                     raise webob.exc.HTTPNoContent()
+            elif method == 'GET':
+                pass
+                # TODO
 
         print 'tincan_handle: unhandled method %s %s' % (method, suffix)
-        return webob.exc.HTTPNotImplemented()  # FIXME: change this to 'unknown method' when appropriate (when you've implemented a good number of endpoints)
+        raise webob.exc.HTTPNotImplemented()  # FIXME: change this to 'unknown method' when appropriate (when you've implemented a good number of endpoints)
 
     def load_resource(self, resource_path):
         """
@@ -279,7 +309,7 @@ class SCORMXBlock(XBlock):
         # We're looking for specific statements that Articulate generate on quiz completion.
         # TODO verify that the keys exist before you access them
 
-        if  'object' not in statement.keys() or 'verb' not in statement.keys() or 'result' not in statement.keys():
+        if 'object' not in statement.keys() or 'verb' not in statement.keys() or 'result' not in statement.keys():
             print 'missing something'
             return
 
