@@ -199,6 +199,11 @@ class SCORMXBlock(XBlock):
 
         # demux
         # print 'method %s %s' % (method, suffix)
+
+        # Articulate HTML5 player sometimes sends '/' suffixes like 'statements/'
+        if suffix.endswith('/'):
+            suffix = suffix[:-1]
+
         if suffix == 'activities/state':
             if method == 'GET':
                 if 'stateId' in post.keys():
@@ -309,7 +314,7 @@ class SCORMXBlock(XBlock):
         # We're looking for specific statements that Articulate generate on quiz completion.
         # TODO verify that the keys exist before you access them
 
-        if 'object' not in statement.keys() or 'verb' not in statement.keys() or 'result' not in statement.keys():
+        if 'object' not in statement.keys() or 'id' not in statement['object'].keys() or 'verb' not in statement.keys() or 'result' not in statement.keys():
             print 'missing something'
             return
 
