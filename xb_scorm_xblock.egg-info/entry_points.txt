@@ -1,4 +1,0 @@
-[xblock.v1]
-xb_scorm = xb_scorm:SCORMXBlock
-xb_scorm_studiohack = xb_scorm:SCORMXBlockStudioHack
-

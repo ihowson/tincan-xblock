@@ -9,7 +9,7 @@ I'm targeting Articulate Storyline first per the document at https://en-uk.artic
 
 # The path that SCORM content is stored in
 # FIXME: nasty
-DEFAULT_SCORM_PATH = '/edx/app/edxapp/edx-platform/scorm'
+DEFAULT_SCORM_PATH = '/edx/app/edxapp/scorm'
 
 from datetime import datetime
 import json
@@ -64,14 +64,7 @@ class SCORMXBlock(XBlock):
     tc_activities_state = Dict(default={}, scope=Scope.user_state)  # stateId -> JSON document
     tc_statements = Dict(default={}, scope=Scope.user_state)  # statementId -> JSON document
 
-    def __init__(self, *args, **kwargs):
-        XBlock.__init__(self, *args, **kwargs)
-
-        # FIXME: technically, we're not supposed to provide __init__. This
-        # works for now, though...
-        self.scorm_path = DEFAULT_SCORM_PATH
-        if self.override_scorm_path:
-            self.scorm_path = self.override_scorm_path
+    scorm_path = DEFAULT_SCORM_PATH
 
     def resource_string(self, path):
         """Handy helper for getting resources from our kit."""

@@ -23,9 +23,9 @@ Experimental XBlock for hosting a SCORM content object. Currently it has built i
 
 # Uploading SCORMs
 
-Right now, there is no nice GUI to do this. The XBlock looks under `/edx/app/edxapp/edx-platform/scorm` for potential SCORMs to display. They must be unzipped. The folder structure looks like:
+Right now, there is no nice GUI to do this. The XBlock looks under `/edx/app/edxapp/scorm` for potential SCORMs to display. They must be unzipped. The folder structure looks like:
 
-    /edx/app/edxapp/edx-platform/scorm/
+    /edx/app/edxapp/scorm/
       |
       |--> some_scorm/
       |     |
@@ -48,12 +48,12 @@ On Devstack, modify `/edx/app/edxapp/edx-platform/lms/urls.py`:
         urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
         # SCORM content (NEW)
-        urlpatterns += static('/scorm/', document_root='/edx/app/edxapp/edx-platform/scorm/')
+        urlpatterns += static('/scorm/', document_root='/edx/app/edxapp/scorm/')
 
         # in debug mode, allow any template to be rendered (most useful for UX reference templates)
         urlpatterns += url(r'^template/(?P<template>.+)$', 'debug.views.show_reference_template'),
 
-Also modify `/edx/app/edxapp/edx-platform/mms/urls.py`:
+Also modify `/edx/app/edxapp/edx-platform/cms/urls.py`:
 
     if settings.DEBUG:
         try:
@@ -64,13 +64,14 @@ Also modify `/edx/app/edxapp/edx-platform/mms/urls.py`:
 
         # SCORM content (NEW)
         from django.conf.urls.static import static
-        urlpatterns += static('/scorm/', document_root='/edx/app/edxapp/edx-platform/scorm/')
+        urlpatterns += static('/scorm/', document_root='/edx/app/edxapp/scorm/')
 
-In production, add to `/edx/app/nginx/sites-enabled/lms`:
+In production, add to `/edx/app/nginx/sites-enabled/lms` and `/edx/app/nginx/sites-enabled/cms`:
 
-    location ~ ^/scorm {
-          root /edx/app/edxapp/edx-platform/;
-    }
+    location /scorm{
+     alias /edx/app/edxapp/scorm;
+     index  index.html;
+  }
 
 (All of this static location business will go away when someone gets time to fix it.)
 
